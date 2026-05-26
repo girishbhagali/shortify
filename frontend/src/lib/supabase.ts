@@ -1,9 +1,9 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // WARNING: Hardcoding keys here exposes them to the browser! It's highly recommended to use .env.local
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || 'https://pweiapgkpexrerhwhjju.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3ZWlhcGdrcGV4cmVyaHdoamp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0MzYxMDYsImV4cCI6MjA5NTAxMjEwNn0.oC6GLXsvNFtD4IrJ7Q_GvC1_w5xIDyKpCQA3wYGit8Q';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3ZWlhcGdrcGV4cmVyaHdoamp1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTQzNjEwNiwiZXhwIjoyMDk1MDEyMTA2fQ.OU3GzA7fnrcle4z7CL-4iznUm-9NhK2lbeVo0Egezd4';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 let _stubWarningLogged = false;
 
