@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --primary: #534AB7;
+
+  /* Architectural Night Sky Design Tokens */
+  --night-sky: #0B0F1A;
+  --rich-black: #121826;
+  --pitch-black: #0A0A0A;
+  --canvas-white: #FFFFFF;
+  --off-white: #F9FAF7;
+  --ash-gray: #F4F4F0;
+  --cool-gray: #E4E4DE;
+  --steel-gray: #D0D0CA;
+  --light-gray: #B0B0AA;
+  --medium-gray: #7A7A74;
+  --slate-gray: #5C5C56;
+  --charcoal: #3A3A34;
+  --dark-charcoal: #1E1E1A;
+  --cofounder-blue: #2D5BFF;
+  --action-azure: #00C2FF;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* Custom Color Tokens */
+  --color-night-sky: var(--night-sky);
+  --color-rich-black: var(--rich-black);
+  --color-pitch-black: var(--pitch-black);
+  --color-canvas-white: var(--canvas-white);
+  --color-off-white: var(--off-white);
+  --color-ash-gray: var(--ash-gray);
+  --color-cool-gray: var(--cool-gray);
+  --color-steel-gray: var(--steel-gray);
+  --color-light-gray: var(--light-gray);
+  --color-medium-gray: var(--medium-gray);
+  --color-slate-gray: var(--slate-gray);
+  --color-charcoal: var(--charcoal);
+  --color-dark-charcoal: var(--dark-charcoal);
+  --color-cofounder-blue: var(--cofounder-blue);
+  --color-action-azure: var(--action-azure);
+
+  /* Custom Font Families — uses next/font CSS variables */
+  --font-ppmondwest: var(--font-playfair), Georgia, 'Times New Roman', serif;
+  --font-af: var(--font-jakarta), 'Inter', system-ui, sans-serif;
+
+  /* Custom Shadows */
+  --shadow-subtle-2: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-subtle-3: 0 4px 16px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --shadow-sm-2: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #000000;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+html {
+  scroll-behavior: smooth;
+}
