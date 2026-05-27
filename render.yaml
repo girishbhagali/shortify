@@ -1,0 +1,34 @@
+services:
+  # Backend API Service (FastAPI)
+  - type: web
+    name: shortify-backend
+    env: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: BASE_URL
+        # Update this to your deployed backend URL once known
+        value: https://shortify-backend.onrender.com
+      - key: ALLOWED_ORIGINS
+        # Update this to your deployed frontend URL once known
+        value: https://shortify-frontend.onrender.com
+      - key: DATABASE_URL
+        sync: false
+
+  # Frontend Web Service (Next.js)
+  - type: web
+    name: shortify-frontend
+    env: node
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_BACKEND_URL
+        value: https://shortify-backend.onrender.com
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
