@@ -3,7 +3,14 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 // WARNING: Hardcoding keys here exposes them to the browser! It's highly recommended to use .env.local
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+
+// ⚠️ SECURITY: SUPABASE_SERVICE_ROLE_KEY bypasses Row Level Security entirely.
+// It must NEVER be used on the client. It is only available server-side because
+// it has no NEXT_PUBLIC_ prefix — Next.js will not bundle it in client JS.
+// Do not rename it to NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY under any circumstances.
+const supabaseServiceKey = typeof window === 'undefined'
+  ? (process.env.SUPABASE_SERVICE_ROLE_KEY || '')
+  : ''; // Always empty string in the browser — key is never shipped to the client
 
 let _stubWarningLogged = false;
 

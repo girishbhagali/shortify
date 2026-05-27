@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { AIFeatures, ExportSettings, ClipData, YtInfo, DashboardStats } from "../types/dashboard";
+import { apiPost, apiPostForm } from "../lib/api";
 
 const DEFAULT_AI_FEATURES: AIFeatures = {
   autoCaptions: true,
@@ -194,24 +195,11 @@ export const useDashboard = () => {
     setInfoError("");
     setYtInfo(null);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/info", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.detail || "Failed to fetch video info");
-      }
-      const data = await res.json();
+      const data = await apiPost<YtInfo>("/api/info", { url });
       setYtInfo(data);
       return data;
     } catch (e) {
-      if (e instanceof Error) {
-        setInfoError(e.message);
-      } else {
-        setInfoError("Unknown error");
-      }
+      setInfoError(e instanceof Error ? e.message : "Unknown error");
       return null;
     } finally {
       setIsFetchingInfo(false);
@@ -250,29 +238,15 @@ export const useDashboard = () => {
     };
 
     try {
-      let response;
+      let data: any;
       if (inputMode === "url") {
-        response = await fetch("http://127.0.0.1:8000/api/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url, settings }),
-        });
+        data = await apiPost("/api/generate", { url, settings });
       } else {
         const formData = new FormData();
         formData.append("file", file!);
         formData.append("settings", JSON.stringify(settings));
-        response = await fetch("http://127.0.0.1:8000/api/upload", {
-          method: "POST",
-          body: formData,
-        });
+        data = await apiPostForm("/api/upload", formData);
       }
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || "Failed to generate shorts");
-      }
-
-      const data = await response.json();
       clearInterval(progressInterval);
       setGenerateProgress(100);
       

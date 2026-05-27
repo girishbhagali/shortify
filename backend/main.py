@@ -2,13 +2,14 @@ import os
 import re
 import uuid
 import asyncio
-import random
-import time
 import yt_dlp
 import shutil
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, status, UploadFile, File, Form
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 import json
+import zipfile
+from typing import Literal
 from pydantic import BaseModel, HttpUrl, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -24,17 +25,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Trigger reload after installing twilio dependency
-
-
-# ─── Twilio SMS OTP Setup ─────────────────────────────────────────────
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
-TWILIO_AUTH_TOKEN  = os.getenv("TWILIO_AUTH_TOKEN", "")
-TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER", "")
-
-# In-memory OTP store: { phone: { otp, expires_at } }
-_otp_store: dict[str, dict] = {}
-OTP_EXPIRY_SECONDS = 600  # 10 minutes
+APP_ENV = os.getenv("APP_ENV", "development")  # Set to "production" in hosting platform
+BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8000").rstrip("/")  # Public-facing backend URL
 
 # Initialize DB tables
 Base.metadata.create_all(bind=engine)
@@ -43,14 +35,38 @@ Base.metadata.create_all(bind=engine)
 limiter = Limiter(key_func=get_remote_address)
 
 # Initialize FastAPI App
-app = FastAPI(title="YouTube to Shorts API")
+# Disable API docs in production — they expose the full API surface publicly
+app = FastAPI(
+    title="YouTube to Shorts API",
+    docs_url="/docs" if APP_ENV != "production" else None,
+    redoc_url="/redoc" if APP_ENV != "production" else None,
+)
+
+# ─── Security Headers Middleware ──────────────────────────────────────────────
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers.pop("X-Powered-By", None)
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# ─── CORS ─────────────────────────────────────────────────────────────────────
+# Load origins from env for production. Comma-separated list.
+_allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],  # Restricted — no PUT/DELETE/PATCH
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 app.state.limiter = limiter
@@ -79,14 +95,14 @@ class AIFeaturesModel(BaseModel):
     faceTracking: bool = True
 
 class ExportSettingsModel(BaseModel):
-    resolution: str = "1080p"
-    fps: str = "60"
+    resolution: Literal["720p", "1080p", "4K"] = "1080p"
+    fps: Literal["24", "30", "60"] = "60"
     watermark: bool = False
 
 class SettingsModel(BaseModel):
-    duration: int = 60
-    aspectRatio: str = "9:16"
-    numClips: int = 1
+    duration: int = Field(default=60, ge=5, le=300)       # 5s–5 min
+    aspectRatio: Literal["9:16", "16:9", "1:1", "4:5"] = "9:16"
+    numClips: int = Field(default=1, ge=1, le=10)          # 1–10 clips max
     aiFeatures: AIFeaturesModel = AIFeaturesModel()
     exportSettings: ExportSettingsModel = ExportSettingsModel()
 
@@ -127,90 +143,12 @@ async def delete_file_after_delay(file_path: str, delay_seconds: int = 3600):
         print(f"Failed to delete file {file_path}: {e}")
 
 # -----------------
-# OTP Models
-# -----------------
-class OTPSendRequest(BaseModel):
-    phone: str = Field(..., description="Full phone number with country code e.g. +919876543210")
-
-class OTPVerifyRequest(BaseModel):
-    phone: str = Field(..., description="Full phone number with country code")
-    otp: str   = Field(..., min_length=6, max_length=6, description="6-digit OTP")
-
-# -----------------
 # Endpoints
 # -----------------
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the YouTube Shorts API"}
 
-# ─── SMS OTP: Send ─────────────────────────────────────────────────────────
-@app.post("/api/otp/send")
-@limiter.limit("5/minute")
-async def send_phone_otp(request: Request, body: OTPSendRequest):
-    """
-    Generates a 6-digit OTP and sends it via Twilio SMS to the given number.
-    Falls back to a simulated success when Twilio credentials are missing.
-    """
-    phone = body.phone.strip()
-    if not re.match(r'^\+[1-9]\d{6,14}$', phone):
-        raise HTTPException(status_code=400, detail="Invalid phone number. Use international format e.g. +919876543210")
-
-    # Generate OTP
-    otp = str(random.randint(100000, 999999))
-    _otp_store[phone] = {
-        "otp": otp,
-        "expires_at": time.time() + OTP_EXPIRY_SECONDS
-    }
-
-    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
-        print(f"[DEV MODE] SMS OTP for {phone}: {otp}")
-        return {"success": True, "message": "OTP sent (dev mode — check console)", "dev_otp": otp}
-
-    try:
-        from twilio.rest import Client as TwilioClient
-        client = TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-        
-        message_body = f"{otp} is your verification code. For your security, do not share this code."
-
-        msg = client.messages.create(
-            body=message_body,
-            from_=TWILIO_PHONE_NUMBER,
-            to=phone
-        )
-        print(f"Twilio SMS OTP sent. SID: {msg.sid}")
-        return {"success": True, "message": "OTP sent via SMS"}
-
-    except Exception as e:
-        print(f"Twilio error: {e}")
-        print(f"[FALLBACK TO DEV MODE] SMS OTP for {phone}: {otp}")
-        return {
-            "success": True,
-            "message": "Twilio error (falling back to dev mode — check console)",
-            "dev_otp": otp,
-            "error_hint": str(e)
-        }
-
-
-# ─── SMS OTP: Verify ───────────────────────────────────────────────────────
-@app.post("/api/otp/verify")
-@limiter.limit("10/minute")
-async def verify_whatsapp_otp(request: Request, body: OTPVerifyRequest):
-    phone = body.phone.strip()
-    entered = body.otp.strip()
-
-    record = _otp_store.get(phone)
-    if not record:
-        raise HTTPException(status_code=400, detail="No OTP was sent to this number. Request a new one.")
-
-    if time.time() > record["expires_at"]:
-        _otp_store.pop(phone, None)
-        raise HTTPException(status_code=400, detail="OTP expired. Request a new one.")
-
-    if record["otp"] != entered:
-        raise HTTPException(status_code=400, detail="Invalid OTP. Please try again.")
-
-    _otp_store.pop(phone, None)
-    return {"success": True, "message": "Phone verified successfully", "phone": phone}
 
 @app.post("/api/info")
 @limiter.limit("20/hour", error_message="Too many requests.")
@@ -268,7 +206,7 @@ async def download_video(request: Request, body: DownloadRequest, background_tas
         'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': f'{base_dir}/{file_id}_%(title)s.%(ext)s',
         'noplaylist': True,
-        'quiet': False, # Show progress in console logs
+        'quiet': APP_ENV == "production",  # Suppress yt-dlp noise in production
         'no_warnings': True,
     }
 
@@ -308,8 +246,8 @@ async def download_video(request: Request, body: DownloadRequest, background_tas
             # 5. Background Task for cleanup (1 hour = 3600 seconds)
             background_tasks.add_task(delete_file_after_delay, downloaded_file_path, 3600)
 
+            # Note: file_path is intentionally omitted — never expose server paths to clients
             return {
-                "file_path": downloaded_file_path,
                 "title": info.get("title", "Unknown Title"),
                 "duration": duration,
                 "thumbnail": info.get("thumbnail", "")
@@ -355,7 +293,7 @@ async def generate_video_clips(request: Request, body: DownloadRequest, backgrou
         'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': f'{base_dir}/{file_id}_%(title)s.%(ext)s',
         'noplaylist': True,
-        'quiet': False,
+        'quiet': APP_ENV == "production",  # Suppress yt-dlp noise in production
         'no_warnings': True,
     }
 
@@ -397,7 +335,7 @@ async def generate_video_clips(request: Request, body: DownloadRequest, backgrou
             # Convert local file paths to static URLs
             for clip in clips_result.get("clips", []):
                 filename = os.path.basename(clip["file_path"])
-                clip["video_url"] = f"http://127.0.0.1:8000/static_clips/{filename}"
+                clip["video_url"] = f"{BASE_URL}/static_clips/{filename}"
 
             # Create DB records
             try:
@@ -441,6 +379,32 @@ async def generate_video_clips(request: Request, body: DownloadRequest, backgrou
         print(f"Unexpected error: {e}")
         raise HTTPException(status_code=500, detail="Download and clip generation failed, please try again")
 
+# ─── Allowed upload types ────────────────────────────────────────────────────
+ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
+# MIME type signatures (magic bytes) for common video formats
+ALLOWED_MIME_SIGNATURES: dict[bytes, str] = {
+    b"\x00\x00\x00\x18ftyp": "mp4",
+    b"\x00\x00\x00\x20ftyp": "mp4",
+    b"\x1aE\xdf\xa3": "mkv/webm",
+    b"RIFF": "avi",
+    b"\x00\x00\x00\x14ftyp": "mov",
+    b"\x00\x00\x00\x08ftyp": "mp4",
+}
+
+def _is_valid_video_file(file_path: str) -> bool:
+    """Check magic bytes to verify the file is actually a video."""
+    try:
+        with open(file_path, "rb") as f:
+            header = f.read(32)
+        for sig in ALLOWED_MIME_SIGNATURES:
+            if header[: len(sig)] == sig or (sig == b"RIFF" and header[:4] == b"RIFF"):
+                return True
+        # Fallback: ftyp box can appear at different offsets in some MP4 variants
+        return b"ftyp" in header or b"moov" in header
+    except Exception:
+        return False
+
+
 @app.post("/api/upload")
 @limiter.limit("5/hour", error_message="Please wait 1 hour before uploading again.")
 async def upload_video_clips(
@@ -450,17 +414,33 @@ async def upload_video_clips(
     settings: str = Form("{}"),
     db: Session = Depends(get_db)
 ):
+    # ── Extension whitelist check (before saving) ─────────────────────────
+    original_ext = os.path.splitext(file.filename or "")[1].lower()
+    if original_ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type '{original_ext}'. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
+
     user_id = sanitize_filename(get_remote_address(request))
     base_dir = f"/tmp/shortifyai/{user_id}"
     os.makedirs(base_dir, exist_ok=True)
 
     file_id = str(uuid.uuid4())
-    ext = os.path.splitext(file.filename)[1] or ".mp4"
-    saved_file_path = f"{base_dir}/{file_id}{ext}"
+    # Always use the validated extension — never trust the raw filename
+    saved_file_path = f"{base_dir}/{file_id}{original_ext}"
     
     try:
         with open(saved_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
+
+        # ── MIME / magic-byte validation (after saving) ───────────────────
+        if not _is_valid_video_file(saved_file_path):
+            os.remove(saved_file_path)
+            raise HTTPException(
+                status_code=400,
+                detail="File content does not match a valid video format."
+            )
             
         file_size_mb = os.path.getsize(saved_file_path) / (1024 * 1024)
         if file_size_mb > 500:
@@ -487,7 +467,7 @@ async def upload_video_clips(
         # Convert local file paths to static URLs
         for clip in clips_result.get("clips", []):
             filename = os.path.basename(clip["file_path"])
-            clip["video_url"] = f"http://127.0.0.1:8000/static_clips/{filename}"
+            clip["video_url"] = f"{BASE_URL}/static_clips/{filename}"
 
         # Create DB records
         try:
@@ -520,29 +500,42 @@ async def upload_video_clips(
         print(f"Unexpected error: {e}")
         raise HTTPException(status_code=500, detail="Upload and clip generation failed, please try again")
 
-import zipfile
-from fastapi.responses import FileResponse
-
 @app.post("/api/zip")
-async def create_zip_archive(body: ZipRequest, background_tasks: BackgroundTasks):
+@limiter.limit("10/hour", error_message="Too many zip requests. Please wait before trying again.")
+async def create_zip_archive(request: Request, body: ZipRequest, background_tasks: BackgroundTasks):
     if not body.files:
         raise HTTPException(status_code=400, detail="No files provided")
-        
+
+    # Cap the number of files to prevent abuse
+    if len(body.files) > 50:
+        raise HTTPException(status_code=400, detail="Too many files. Maximum 50 per zip.")
+
     zip_id = str(uuid.uuid4())
     zip_path = f"/tmp/clips/shorts_{zip_id}.zip"
-    
+    clips_base = os.path.realpath("/tmp/clips")
+
     try:
-        with zipfile.ZipFile(zip_path, 'w') as zipf:
+        with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zipf:
             for file_url in body.files:
-                # file_url is like http://127.0.0.1:8000/static_clips/clip_1.mp4
-                # We need the local path
-                filename = file_url.split("/")[-1]
-                local_path = os.path.join("/tmp/clips", filename)
-                if os.path.exists(local_path):
+                # ── Path traversal protection ─────────────────────────────────
+                # Extract just the basename — reject anything with path separators
+                raw_name = file_url.split("/")[-1]
+                filename = os.path.basename(raw_name)  # strips any remaining path components
+
+                if not filename or "." not in filename:
+                    continue  # skip empty or suspicious names
+
+                local_path = os.path.realpath(os.path.join("/tmp/clips", filename))
+
+                # Confirm resolved path is still inside /tmp/clips — prevents symlink attacks
+                if not local_path.startswith(clips_base + os.sep):
+                    continue
+
+                if os.path.isfile(local_path):
                     zipf.write(local_path, arcname=filename)
-                    
+
         background_tasks.add_task(delete_file_after_delay, zip_path, 3600)
-        return {"zip_url": f"http://127.0.0.1:8000/static_clips/shorts_{zip_id}.zip"}
+        return {"zip_url": f"{BASE_URL}/static_clips/shorts_{zip_id}.zip"}
     except Exception as e:
         print(f"Error creating ZIP: {e}")
         raise HTTPException(status_code=500, detail="Failed to create ZIP archive")
