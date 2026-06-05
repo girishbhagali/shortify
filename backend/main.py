@@ -30,6 +30,18 @@ from scheduler_routes import router as scheduler_router
 
 load_dotenv(override=True)
 
+# --- Env Var Validation ---
+supabase_url = os.getenv("SUPABASE_URL")
+supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+
+if not supabase_url or not supabase_url.startswith("https://"):
+    print("[FATAL] SUPABASE_URL is missing or invalid. It must be a valid HTTPS URL.")
+    sys.exit(1)
+
+if not supabase_key:
+    print("[FATAL] SUPABASE_SERVICE_KEY is missing from environment variables.")
+    sys.exit(1)
+
 # Dedicated pool for FFmpeg/Whisper clip jobs (BackgroundTasks were not running on Windows)
 _clip_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="clip-worker")
 
