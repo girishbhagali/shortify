@@ -44,11 +44,7 @@ export default function SignUpPage() {
     try {
       const { data, error } = await signUpWithEmail(name, email, password);
 
-      if (error && error.message === 'supabase_not_configured') {
-        toast.success("Account created! Redirecting...", { icon: "🎉" });
-        setTimeout(() => router.push("/onboarding"), 1500);
-        return;
-      }
+
 
       if (error) {
         if (error.message.toLowerCase().includes("already")) {

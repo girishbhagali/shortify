@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { AIFeatures, ExportSettings, ClipData, YtInfo, DashboardStats } from "../types/dashboard";
 import { apiPost, apiPostForm } from "../lib/api";
+import { MOCK_LIBRARY_CLIPS, LibraryClip } from "../components/library/mockData";
+import { getCurrentUser } from "../lib/auth";
+import { supabase } from "@/lib/supabase";
 
 const DEFAULT_AI_FEATURES: AIFeatures = {
   autoCaptions: true,
@@ -80,6 +83,7 @@ export const useDashboard = () => {
   const [generateError, setGenerateError] = useState("");
   const [clips, setClips] = useState<ClipData[] | null>(null);
   const [stats, setStats] = useState<DashboardStats>(DEFAULT_STATS);
+  const [libraryClips, setLibraryClips] = useState<LibraryClip[]>(MOCK_LIBRARY_CLIPS);
 
   // Load state on mount
   useEffect(() => {
@@ -95,56 +99,28 @@ export const useDashboard = () => {
         document.documentElement.classList.remove("dark");
       }
 
-      // Restore inputs
-      const cachedClips = localStorage.getItem("shortify_cached_clips");
-      if (cachedClips) {
-        try { setClips(JSON.parse(cachedClips)); } catch (e) { console.error(e); }
+      // Load persistent clips
+      const savedClips = localStorage.getItem("shortify_library_clips");
+      if (savedClips) {
+        try {
+          setLibraryClips(JSON.parse(savedClips));
+        } catch (e) {
+          console.error("Failed to parse saved clips");
+        }
       }
-      
-      const cachedUrl = localStorage.getItem("shortify_cached_url");
-      if (cachedUrl) setUrl(cachedUrl);
-      
-      const cachedYtInfo = localStorage.getItem("shortify_cached_yt_info");
-      if (cachedYtInfo) {
-        try { setYtInfo(JSON.parse(cachedYtInfo)); } catch (e) { console.error(e); }
-      }
-
-      const cachedAspectRatio = localStorage.getItem("shortify_cached_aspect_ratio");
-      if (cachedAspectRatio) setAspectRatio(cachedAspectRatio as any);
-
-      const cachedNumClips = localStorage.getItem("shortify_cached_num_clips");
-      if (cachedNumClips) setNumClips(Number(cachedNumClips));
     }
   }, []);
 
-  // Save states upon changes
+  // Save clips to local storage when they change
   useEffect(() => {
-    localStorage.setItem("shortify_cached_url", url);
-  }, [url]);
-
-  useEffect(() => {
-    if (ytInfo) {
-      localStorage.setItem("shortify_cached_yt_info", JSON.stringify(ytInfo));
-    } else {
-      localStorage.removeItem("shortify_cached_yt_info");
+    if (typeof window !== "undefined" && libraryClips !== MOCK_LIBRARY_CLIPS) {
+      localStorage.setItem("shortify_library_clips", JSON.stringify(libraryClips));
     }
-  }, [ytInfo]);
+  }, [libraryClips]);
 
-  useEffect(() => {
-    if (clips) {
-      localStorage.setItem("shortify_cached_clips", JSON.stringify(clips));
-    } else {
-      localStorage.removeItem("shortify_cached_clips");
-    }
-  }, [clips]);
-
-  useEffect(() => {
-    localStorage.setItem("shortify_cached_aspect_ratio", aspectRatio);
-  }, [aspectRatio]);
-
-  useEffect(() => {
-    localStorage.setItem("shortify_cached_num_clips", String(numClips));
-  }, [numClips]);
+  const deleteLibraryClips = (clipIds: string[]) => {
+    setLibraryClips(prev => prev.filter(c => !clipIds.includes(c.id)));
+  };
 
   // Sync aspect ratio with target platforms automatically
   useEffect(() => {
@@ -233,18 +209,25 @@ export const useDashboard = () => {
       duration,
       aspectRatio,
       numClips,
+      targetPlatform,
       aiFeatures,
       exportSettings
     };
 
     try {
+      const { user } = await getCurrentUser();
+      const userId = user?.id || null;
+
       let data: any;
       if (inputMode === "url") {
-        data = await apiPost("/api/generate", { url, settings });
+        data = await apiPost("/api/generate", { url, settings, userId });
       } else {
         const formData = new FormData();
         formData.append("file", file!);
         formData.append("settings", JSON.stringify(settings));
+        if (userId) {
+          formData.append("userId", userId);
+        }
         data = await apiPostForm("/api/upload", formData);
       }
       clearInterval(progressInterval);
@@ -261,6 +244,9 @@ export const useDashboard = () => {
       setTimeout(() => {
         setClips(data.clips);
         setIsGenerating(false);
+
+        // Auto-switch to library tab so user sees clips appearing via realtime
+        setActiveTab("library");
       }, 500);
     } catch (err: any) {
       clearInterval(progressInterval);
@@ -274,6 +260,44 @@ export const useDashboard = () => {
     setGenerateProgress(0);
     setGenerateError("Clip generation canceled.");
   };
+
+  // Poll Supabase while Recent Clips show "processing" (backend runs in background)
+  useEffect(() => {
+    const processingIds = (clips ?? [])
+      .filter((c) => c.status === "processing" && c.id)
+      .map((c) => c.id as string);
+
+    if (processingIds.length === 0) return;
+
+    const poll = async () => {
+      const { data, error } = await supabase
+        .from("clips")
+        .select("id, status, duration_seconds, viral_score, thumbnail_storage_path, clip_storage_path")
+        .in("id", processingIds);
+
+      if (error || !data) return;
+
+      setClips((prev) => {
+        if (!prev) return prev;
+        return prev.map((clip) => {
+          const updated = data.find((row) => row.id === clip.id);
+          if (!updated) return clip;
+          return {
+            ...clip,
+            status: updated.status,
+            duration: updated.duration_seconds ?? clip.duration,
+            score: updated.viral_score ?? clip.score,
+            thumbnail_storage_path: updated.thumbnail_storage_path ?? clip.thumbnail_storage_path,
+            clip_storage_path: updated.clip_storage_path ?? clip.clip_storage_path,
+          };
+        });
+      });
+    };
+
+    poll();
+    const interval = setInterval(poll, 5000);
+    return () => clearInterval(interval);
+  }, [clips]);
 
   return {
     // Navigation/Shell
@@ -318,6 +342,9 @@ export const useDashboard = () => {
     generateError,
     clips,
     stats,
+    libraryClips,
+    setLibraryClips,
+    deleteLibraryClips,
     handleGenerate,
     cancelGeneration
   };

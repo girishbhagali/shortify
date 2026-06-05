@@ -8,6 +8,15 @@ import librosa
 import numpy as np
 from textblob import TextBlob
 
+# Cache whisper model globally — loaded once, reused every call
+_whisper_model = None
+def get_whisper_model():
+    global _whisper_model
+    if _whisper_model is None:
+        print("Loading Whisper 'tiny' model (cached globally)...")
+        _whisper_model = whisper.load_model("tiny")
+    return _whisper_model
+
 def analyze_transcript(video_path, transcript_segments, window_size=35.0):
     words = []
     for segment in transcript_segments:
@@ -21,13 +30,13 @@ def analyze_transcript(video_path, transcript_segments, window_size=35.0):
     print("Extracting audio for analysis...")
     subprocess.run([
         "ffmpeg", "-y", "-i", video_path, 
-        "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", 
+        "-vn", "-acodec", "pcm_s16le", "-ar", "8000", "-ac", "1", 
         audio_path
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
     print("Loading audio into librosa...")
     try:
-        y, sr = librosa.load(audio_path, sr=16000)
+        y, sr = librosa.load(audio_path, sr=8000)
         rms = librosa.feature.rms(y=y)[0]
         times = librosa.frames_to_time(np.arange(len(rms)), sr=sr)
         global_mean_rms = np.mean(rms) if len(rms) > 0 else 1.0
@@ -136,7 +145,8 @@ def analyze_transcript(video_path, transcript_segments, window_size=35.0):
             
     return top_clips
 
-def generate_srt(words, clip_start, output_path, emoji=False):
+def generate_srt(words, clip_start, output_path, emoji=False, lang=None):
+    from services.clip_processor import translate_text, add_emojis_to_text
     def format_time(seconds):
         hours = int(seconds // 3600)
         minutes = int((seconds % 3600) // 60)
@@ -150,9 +160,11 @@ def generate_srt(words, clip_start, output_path, emoji=False):
             w_end = max(0, w['end'] - clip_start)
             word = w.get('word', '').strip()
             
-            if emoji and "!" in word: word += " 💥"
-            elif emoji and "?" in word: word += " 🤔"
-            
+            if lang:
+                word = translate_text(word, lang)
+            if emoji:
+                word = add_emojis_to_text(word)
+                
             f.write(f"{i+1}\n{format_time(w_start)} --> {format_time(w_end)}\n{word}\n\n")
 
 def cut_and_resize_clip(video_path: str, start_time: float, end_time: float, output_path: str, settings: dict, words: list) -> bool:
@@ -195,7 +207,7 @@ def cut_and_resize_clip(video_path: str, start_time: float, end_time: float, out
                     face_cascade = cv2.CascadeClassifier(cascade_path)
                     
                     face_xs = []
-                    for _ in range(60): 
+                    for _ in range(15):  # Reduced from 60 for speed
                         ret, frame = cap.read()
                         if not ret: break
                         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -231,11 +243,11 @@ def cut_and_resize_clip(video_path: str, start_time: float, end_time: float, out
     # Auto Captions
     if ai_features.get("autoCaptions"):
         srt_path = output_path.replace(".mp4", ".srt")
-        generate_srt(words, padded_start, srt_path, emoji=ai_features.get("emojiCaptions", False))
+        lang = ai_features.get("translateLanguage", "Hindi") if ai_features.get("autoTranslate", False) else None
+        emoji_enabled = ai_features.get("emojiCaptions", True) or ai_features.get("emojiAnimations", True)
+        generate_srt(words, padded_start, srt_path, emoji=emoji_enabled, lang=lang)
         
-        abs_srt_path = os.path.abspath(srt_path)
-        import re
-        safe_srt_path = re.sub(r'^[A-Za-z]:', '', abs_srt_path).replace("\\", "/")
+        safe_srt_path = os.path.basename(srt_path)
         effects_chain.append(f"subtitles=filename='{safe_srt_path}':force_style='FontSize=24,PrimaryColour=&H00FFFF&,Bold=1,Alignment=2,MarginV=100'")
 
     # Viral Hook Overlay
@@ -276,15 +288,16 @@ def cut_and_resize_clip(video_path: str, start_time: float, end_time: float, out
     cmd.extend([
         "-r", fps,
         "-c:v", "libx264",
+        "-preset", "ultrafast",
         "-pix_fmt", "yuv420p",
         "-c:a", "aac",
-        "-b:a", "192k",
+        "-b:a", "128k",
         "-shortest",
         output_path
     ])
     
     try:
-        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=os.path.dirname(output_path))
         return True
     except subprocess.CalledProcessError as e:
         print(f"FFmpeg Error! Command: {' '.join(cmd)}")
@@ -302,10 +315,10 @@ def generate_clips(video_path: str, num_clips: int = 5, settings: dict = None):
     output_dir = os.path.abspath("/tmp/clips")
     os.makedirs(output_dir, exist_ok=True)
     
-    print("STEP 1: Transcribing video with Whisper...")
+    print("STEP 1: Transcribing video with Whisper (tiny, fast)...")
     try:
-        model = whisper.load_model("base")
-        result = model.transcribe(video_path, word_timestamps=True)
+        model = get_whisper_model()
+        result = model.transcribe(video_path, word_timestamps=True, fp16=False)
     except Exception as e:
         print(f"Whisper failed: {e}")
         return {"error": str(e)}
@@ -340,6 +353,15 @@ def generate_clips(video_path: str, num_clips: int = 5, settings: dict = None):
             
     print("STEP 5: Processing complete!")
     return results
+
+def find_viral_segments(video_path: str, num_clips: int = 5, duration: int = 35):
+    print("STEP 1: Transcribing video with Whisper (tiny, fast)...")
+    model = get_whisper_model()
+    result = model.transcribe(video_path, word_timestamps=True, fp16=False)
+    
+    print("STEP 2: Advanced Viral Analysis (Audio + NLP)...")
+    top_segments = analyze_transcript(video_path, result['segments'], window_size=duration)
+    return top_segments[:num_clips]
 
 if __name__ == "__main__":
     pass

@@ -145,7 +145,13 @@ export default function MainPanel({ hook }: MainPanelProps) {
                 animate={{ opacity: 1, y: 0 }}
                 className="p-4 rounded-xl border border-cool-gray dark:border-zinc-800 bg-ash-gray dark:bg-zinc-800/40 flex flex-col sm:flex-row items-center gap-4 relative overflow-hidden"
               >
-                <img src={ytInfo.thumbnail} alt="Thumbnail" className="w-32 h-18 object-cover rounded-lg shadow-sm border border-steel-gray dark:border-zinc-700" />
+                {ytInfo.thumbnail ? (
+                  <img src={ytInfo.thumbnail} alt="Thumbnail" className="w-32 h-18 object-cover rounded-lg shadow-sm border border-steel-gray dark:border-zinc-700 shrink-0" />
+                ) : (
+                  <div className="w-32 h-18 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-slate-gray dark:text-zinc-500 font-bold text-xs uppercase shrink-0 border border-cool-gray dark:border-zinc-700">
+                    No Img
+                  </div>
+                )}
                 <div className="flex flex-col text-left space-y-1">
                   <h4 className="font-bold text-sm text-dark-charcoal dark:text-canvas-white line-clamp-1">{ytInfo.title}</h4>
                   <div className="flex items-center flex-wrap gap-4 text-xs text-medium-gray dark:text-zinc-400 font-af font-medium">

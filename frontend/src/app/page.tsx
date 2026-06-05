@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -15,11 +15,17 @@ import { supabase } from "@/lib/supabase";
 export default function Home() {
   const router = useRouter();
   const [heroUrl, setHeroUrl] = useState("");
+  const [mounted, setMounted] = useState(false);
   
   // Waitlist State
   const [email, setEmail] = useState("");
   const [waitlistStatus, setWaitlistStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [waitlistMessage, setWaitlistMessage] = useState("");
+
+  // Effect to set mounted flag and suppress hydration issues from browser extensions
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleHeroSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,11 +153,13 @@ export default function Home() {
                   placeholder="Paste YouTube URL here..." 
                   value={heroUrl}
                   onChange={(e) => setHeroUrl(e.target.value)}
+                  suppressHydrationWarning
                   className="flex-1 bg-transparent border-none text-dark-charcoal text-sm focus:ring-0 py-2 px-1 outline-none w-full placeholder:text-slate-gray font-af"
                 />
               </div>
               <button 
                 type="submit"
+                suppressHydrationWarning
                 className="w-full sm:w-auto px-8 py-3.5 bg-cofounder-blue hover:bg-cofounder-blue/90 text-canvas-white rounded-xl text-xs font-bold font-af transition-all flex items-center justify-center gap-2 active:scale-98 whitespace-nowrap"
               >
                 <span>Generate Shorts</span>
@@ -323,11 +331,13 @@ export default function Home() {
               placeholder="Enter your email address..."
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              suppressHydrationWarning
               className="flex-1 bg-transparent border-none text-dark-charcoal text-xs focus:ring-0 py-2.5 px-3 outline-none placeholder:text-slate-gray font-af"
             />
             <button 
               type="submit"
               disabled={waitlistStatus === "loading"}
+              suppressHydrationWarning
               className="px-6 py-2.5 bg-night-sky hover:bg-rich-black text-canvas-white rounded-lg text-xs font-bold font-af transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 active:scale-98"
             >
               <span>Join Free</span>
@@ -362,7 +372,7 @@ export default function Home() {
             <a href="#" className="hover:text-cofounder-blue transition-colors">Terms</a>
             <a href="#" className="hover:text-cofounder-blue transition-colors">Contact</a>
           </div>
-          <p className="text-medium-gray text-[11px] mt-4 md:mt-0">© {new Date().getFullYear()} ShortifyAI. All rights reserved.</p>
+          <p className="text-medium-gray text-[11px] mt-4 md:mt-0">© {mounted ? new Date().getFullYear() : "2026"} ShortifyAI. All rights reserved.</p>
         </div>
       </footer>
     </div>

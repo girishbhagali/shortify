@@ -8,6 +8,9 @@ import AIEditsPanel from "../../components/dashboard/AIEditsPanel";
 import ExportPanel from "../../components/dashboard/ExportPanel";
 import GenerateButton from "../../components/dashboard/GenerateButton";
 import RecentClips from "../../components/dashboard/RecentClips";
+import DashboardHomePanel from "../../components/dashboard/DashboardHomePanel";
+import LibraryPanel from "../../components/library/LibraryPanel";
+import SchedulerPanel from "../../components/scheduler/SchedulerPanel";
 import { LayoutDashboard } from "lucide-react";
 
 import dynamic from "next/dynamic";
@@ -30,27 +33,36 @@ function DashboardPageImpl() {
       >
         
         {/* Workspace content container */}
-        <main className="p-4 md:p-8 max-w-6xl mx-auto w-full space-y-6">
+        <main className={`p-4 md:p-8 mx-auto w-full space-y-6 ${activeTab === 'library' || activeTab === 'scheduler' ? 'max-w-[1400px]' : 'max-w-6xl'}`}>
           
-          {/* Top Title Banner */}
-          <div className="flex flex-col text-left space-y-1">
-            <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#534AB7] dark:text-[#00C2FF] uppercase tracking-widest font-af">
-              <LayoutDashboard className="w-3.5 h-3.5" />
-              <span>ShortifyAI Studio Suite</span>
-            </div>
-            <h1 className="font-ppmondwest text-4xl text-pitch-black dark:text-canvas-white font-normal tracking-[-0.0200em]">
-              {activeTab === "create" ? "Create Viral Shorts" : "Studio Hub"}
-            </h1>
-            <p className="text-xs text-medium-gray dark:text-zinc-500 font-af">
-              Convert long videos into viral, high-retention social media clips automatically.
-            </p>
-          </div>
+          {/* Top Title Banner & Stats Bar (hidden on Library/Scheduler tab since it has its own) */}
+          {activeTab !== "library" && activeTab !== "scheduler" && (
+            <>
+              <div className="flex flex-col text-left space-y-1">
+                <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#534AB7] dark:text-[#00C2FF] uppercase tracking-widest font-af">
+                  <LayoutDashboard className="w-3.5 h-3.5" />
+                  <span>ShortifyAI Studio Suite</span>
+                </div>
+                <h1 className="font-ppmondwest text-4xl text-pitch-black dark:text-canvas-white font-normal tracking-[-0.0200em]">
+                  {activeTab === "create" ? "Create Viral Shorts" : "Studio Hub"}
+                </h1>
+                <p className="text-xs text-medium-gray dark:text-zinc-500 font-af">
+                  Convert long videos into viral, high-retention social media clips automatically.
+                </p>
+              </div>
 
-          {/* Top Stats Banner */}
-          <StatsBar hook={hook} />
+              <StatsBar hook={hook} />
+            </>
+          )}
 
           {/* Main Panel Content grids depending on route tab */}
-          {activeTab === "create" ? (
+          {activeTab === "dashboard" ? (
+            <DashboardHomePanel hook={hook} />
+          ) : activeTab === "library" ? (
+            <LibraryPanel hook={hook} />
+          ) : activeTab === "scheduler" ? (
+            <SchedulerPanel hook={hook} />
+          ) : activeTab === "create" ? (
             <div className="grid lg:grid-cols-12 gap-8 items-start">
               
               {/* Left Column (URL Input settings + generate submit CTA) */}
@@ -68,7 +80,7 @@ function DashboardPageImpl() {
             </div>
           ) : (
             <div className="p-12 text-center text-xs text-medium-gray dark:text-zinc-500 font-af bg-canvas-white dark:bg-[#1A1A24] border border-cool-gray dark:border-zinc-800 rounded-[24px] shadow-sm">
-              The requested &quot;{activeTab}&quot; routeway panel is currently in beta. Switch to the &quot;Create Clips&quot; tab to try the clipper engine!
+              The requested &quot;{activeTab}&quot; routeway panel is currently in beta. Switch to the &quot;Dashboard&quot; or &quot;Create Clips&quot; tab!
             </div>
           )}
 

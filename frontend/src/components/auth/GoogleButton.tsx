@@ -10,11 +10,6 @@ export default function GoogleButton() {
     setLoading(true);
     try {
       const { error } = await signInWithGoogle();
-      if (error && error.message === 'supabase_not_configured') {
-        // Simulated fallback — just redirect
-        window.location.href = "/dashboard";
-        return;
-      }
       if (error) throw error;
     } catch (err) {
       console.error("Google sign-in failed:", err);

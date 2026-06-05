@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+// Force Turbopack to reload this file and pick up new .env.local variables
 
 // WARNING: Hardcoding keys here exposes them to the browser! It's highly recommended to use .env.local
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
@@ -26,7 +27,7 @@ const createSafeClient = (url: string, key: string, options?: any) => {
         );
       }
     }
-    return new Proxy({} as any, {
+    return new Proxy({} as SupabaseClient, {
       get: (_target, prop) => {
         if (prop === 'auth') {
           return {
@@ -36,9 +37,11 @@ const createSafeClient = (url: string, key: string, options?: any) => {
             signInWithOtp: async () => ({ data: null, error: new Error('supabase_not_configured') }),
             verifyOtp: async () => ({ data: null, error: new Error('supabase_not_configured') }),
             resetPasswordForEmail: async () => ({ data: null, error: new Error('supabase_not_configured') }),
+            exchangeCodeForSession: async () => ({ data: { session: null, user: null }, error: new Error('supabase_not_configured') }),
+            getSession: async () => ({ data: { session: null }, error: null }),
             getUser: async () => ({ data: { user: null }, error: null }),
             signOut: async () => ({ error: null }),
-            onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => { } } } }),
+            onAuthStateChange: (_event: string, _session: null) => ({ data: { subscription: { unsubscribe: () => { } } } }),
           };
         }
         if (prop === 'from') {

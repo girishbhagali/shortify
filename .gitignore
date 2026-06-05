@@ -7,12 +7,14 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.local.example
 
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 .venv/
+.venv-1/
 venv/
 ENV/
 env/
@@ -21,6 +23,19 @@ env/
 htmlcov/
 *.sqlite3
 
+# Project Specific
+backend/shortify.db
+backend/tmp_clips/
+backend/sample_video.mp4
+backend/dummy.mp4
+backend/output_rel.mp4
+backend/test.srt
+backend/test_thumb.jpg
+backend/test_*.py
+backend/debug_*.py
+
 # OS
 .DS_Store
 Thumbs.db
+
+backend/cookies.txt

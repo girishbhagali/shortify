@@ -1,14 +1,19 @@
 export interface ClipData {
+  id?: string;
+  title?: string;
+  status?: string;
   clip_number: number;
-  file_path: string;
+  file_path?: string;
   start_time: number;
   end_time: number;
   score: number;
-  hook_strength: string;
-  energy_level: string;
+  hook_strength?: string;
+  energy_level?: string;
   transcript: string;
-  duration: number;
-  video_url: string;
+  duration?: number;
+  video_url?: string;
+  thumbnail_storage_path?: string;
+  clip_storage_path?: string;
 }
 
 export interface YtInfo {

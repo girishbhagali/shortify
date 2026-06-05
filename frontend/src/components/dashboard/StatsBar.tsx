@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Play, Scissors, Download, Flame, Video } from "lucide-react";
+import { Play, Scissors, Download, Flame, Video, TrendingUp } from "lucide-react";
 import { UseDashboardType } from "../../hooks/useDashboard";
 
 interface StatsBarProps {
@@ -17,21 +17,24 @@ export default function StatsBar({ hook }: StatsBarProps) {
       value: stats.videosProcessed,
       icon: Video,
       color: "from-blue-500/10 to-indigo-500/10 text-blue-500",
-      accent: "#3b82f6"
+      accent: "#3b82f6",
+      trend: "+12%"
     },
     {
       label: "Clips Generated",
       value: stats.clipsGenerated,
       icon: Scissors,
       color: "from-purple-500/10 to-pink-500/10 text-[#534AB7]",
-      accent: "#534AB7"
+      accent: "#534AB7",
+      trend: "+15%"
     },
     {
       label: "Total Downloads",
       value: stats.totalDownloads,
       icon: Download,
       color: "from-emerald-500/10 to-teal-500/10 text-emerald-500",
-      accent: "#10b981"
+      accent: "#10b981",
+      trend: "+8%"
     },
     {
       label: "Avg Viral Score",
@@ -39,7 +42,8 @@ export default function StatsBar({ hook }: StatsBarProps) {
       icon: Flame,
       color: "from-amber-500/10 to-orange-500/10 text-amber-500",
       accent: "#f59e0b",
-      suffix: "/100"
+      suffix: "/100",
+      trend: "+5%"
     }
   ];
 
@@ -74,17 +78,26 @@ export default function StatsBar({ hook }: StatsBarProps) {
             {/* Background Gradient Vector */}
             <div className={`absolute -right-4 -bottom-4 w-12 h-12 rounded-full bg-gradient-to-br ${item.color} blur-lg group-hover:scale-125 transition-transform`} />
 
-            <div className="space-y-1 z-10 text-left">
+            <div className="space-y-1.5 z-10 text-left">
               <span className="text-[10px] font-bold text-slate-gray dark:text-zinc-500 uppercase tracking-wider block font-af">
                 {item.label}
               </span>
-              <div className="flex items-baseline">
-                <span className="text-xl md:text-2xl font-normal tracking-tight text-pitch-black dark:text-canvas-white font-ppmondwest">
-                  {item.value}
-                </span>
-                {item.suffix && (
-                  <span className="text-[10px] font-bold text-slate-gray pl-0.5">{item.suffix}</span>
-                )}
+              <div className="flex flex-col">
+                <div className="flex items-baseline">
+                  <span className="text-xl md:text-2xl font-normal tracking-tight text-pitch-black dark:text-canvas-white font-ppmondwest">
+                    {item.value}
+                  </span>
+                  {item.suffix && (
+                    <span className="text-[10px] font-bold text-slate-gray pl-0.5">{item.suffix}</span>
+                  )}
+                </div>
+                
+                <div className="flex items-center gap-1 mt-0.5">
+                  <TrendingUp className="w-3 h-3 text-emerald-500" />
+                  <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 font-af">
+                    {item.trend} <span className="text-slate-gray dark:text-zinc-500">vs last week</span>
+                  </span>
+                </div>
               </div>
             </div>
 

@@ -44,7 +44,7 @@ const nextConfig: NextConfig = {
               "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // unsafe-eval needed for Next.js dev
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com",
-              "img-src 'self' data: blob: https://*.supabase.co https://i.ytimg.com https://*.ytimg.com",
+              `img-src 'self' data: blob: https://*.supabase.co https://i.ytimg.com https://*.ytimg.com ${backendUrl}`,
               `connect-src 'self' https://*.supabase.co wss://*.supabase.co ${backendUrl}`,
               `media-src 'self' blob: ${backendUrl}`,
               "frame-ancestors 'none'",
