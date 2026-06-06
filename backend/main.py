@@ -91,14 +91,15 @@ app.include_router(scheduler_router)
 
 # ─── CORS ─────────────────────────────────────────────────────────────────────
 # Load origins from env for production. Comma-separated list.
-_allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+_allowed_origins = [origin.strip().rstrip("/") for origin in raw_origins if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS", "HEAD", "DELETE", "PUT", "PATCH"],
-    allow_headers=["Content-Type", "Authorization", "Range"],
+    allow_methods=["*"],
+    allow_headers=["*"],
     expose_headers=["Accept-Ranges", "Content-Range", "Content-Length", "Content-Type"],
 )
 
