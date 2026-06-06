@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi import Depends
 from sqlalchemy.orm import Session
-from clip_generator import generate_clips, find_viral_segments
+
 from services.clip_processor import supabase, process_and_store_clip
 from database import engine, Base, get_db
 from models import Job, Clip
@@ -725,6 +725,7 @@ async def generate_video_clips(request: Request, body: DownloadRequest, backgrou
             duration_preset = settings_dict.get("duration", 35)
 
             # 1. Analyze and find viral moments
+            from clip_generator import find_viral_segments
             top_segments = await asyncio.to_thread(find_viral_segments, downloaded_file_path, num_clips, duration_preset)
             
             # 2. Extract source title
