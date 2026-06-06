@@ -556,10 +556,10 @@ async def get_video_info(request: Request, body: InfoRequest):
             raise HTTPException(status_code=403, detail="YouTube requires authentication. Please log into YouTube in your browser and try again.")
         if "video unavailable" in error_msg or "private" in error_msg:
             raise HTTPException(status_code=404, detail="This video does not exist or is private")
-        raise HTTPException(status_code=500, detail="Failed to fetch video info")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch video info: {str(e)}")
     except Exception as e:
         print(f"[INFO] Unexpected error fetching info: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch video info")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 @app.post("/api/download")
 @limiter.limit("5/hour", error_message="Please wait 1 hour before downloading again.")
