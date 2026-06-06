@@ -8,8 +8,11 @@ import sys
 load_dotenv()
 
 # The user provided connection string
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./shortify.db")
-
+db_url = os.getenv("DATABASE_URL")
+if db_url:
+    SQLALCHEMY_DATABASE_URL = db_url.strip()
+else:
+    SQLALCHEMY_DATABASE_URL = "sqlite:///./shortify.db"
 # 1. Validation: Prevent using HTTPS URLs as Database URLs
 if SQLALCHEMY_DATABASE_URL.startswith("https://") or SQLALCHEMY_DATABASE_URL.startswith("http://"):
     print(f"[FATAL] Invalid DATABASE_URL: {SQLALCHEMY_DATABASE_URL}")
