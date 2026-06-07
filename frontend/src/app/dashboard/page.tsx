@@ -11,6 +11,8 @@ import RecentClips from "../../components/dashboard/RecentClips";
 import DashboardHomePanel from "../../components/dashboard/DashboardHomePanel";
 import LibraryPanel from "../../components/library/LibraryPanel";
 import SchedulerPanel from "../../components/scheduler/SchedulerPanel";
+import AnalyticsPanel from "../../components/analytics/AnalyticsPanel";
+import SettingsPanel from "../../components/settings/SettingsPanel";
 import { LayoutDashboard } from "lucide-react";
 
 import dynamic from "next/dynamic";
@@ -78,6 +80,10 @@ function DashboardPageImpl() {
               </div>
 
             </div>
+          ) : activeTab === "analytics" ? (
+            <AnalyticsPanel hook={hook} />
+          ) : activeTab === "settings" ? (
+            <SettingsPanel hook={hook} />
           ) : (
             <div className="p-12 text-center text-xs text-medium-gray dark:text-zinc-500 font-af bg-canvas-white dark:bg-[#1A1A24] border border-cool-gray dark:border-zinc-800 rounded-[24px] shadow-sm">
               The requested &quot;{activeTab}&quot; routeway panel is currently in beta. Switch to the &quot;Dashboard&quot; or &quot;Create Clips&quot; tab!

@@ -84,6 +84,15 @@ export const useDashboard = () => {
   const [clips, setClips] = useState<ClipData[] | null>(null);
   const [stats, setStats] = useState<DashboardStats>(DEFAULT_STATS);
   const [libraryClips, setLibraryClips] = useState<LibraryClip[]>(MOCK_LIBRARY_CLIPS);
+  
+  // Analytics State
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [isFetchingAnalytics, setIsFetchingAnalytics] = useState(false);
+
+  // User Settings State
+  const [settingsData, setSettingsData] = useState<any>(null);
+  const [isFetchingSettings, setIsFetchingSettings] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   // Load state on mount
   useEffect(() => {
@@ -299,6 +308,74 @@ export const useDashboard = () => {
     return () => clearInterval(interval);
   }, [clips]);
 
+  // Fetch Analytics when tab becomes active
+  const fetchAnalytics = async () => {
+    setIsFetchingAnalytics(true);
+    try {
+      const { user } = await getCurrentUser();
+      const userId = user?.id || "00000000-0000-0000-0000-000000000000";
+      const data = await apiPost("/api/analytics", { userId });
+      setAnalyticsData(data);
+    } catch (err) {
+      console.error("Failed to fetch analytics", err);
+    } finally {
+      setIsFetchingAnalytics(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "analytics" && !analyticsData && !isFetchingAnalytics) {
+      fetchAnalytics();
+    }
+  }, [activeTab]);
+
+  // Fetch Settings when tab becomes active
+  const fetchSettings = async () => {
+    setIsFetchingSettings(true);
+    try {
+      const { user } = await getCurrentUser();
+      const userId = user?.id || "00000000-0000-0000-0000-000000000000";
+      const data: any = await apiPost("/api/settings", { userId });
+      setSettingsData(data);
+      
+      // Update global theme if fetched
+      if (data.theme) {
+        if (data.theme === "Dark") {
+          setDarkMode(true);
+          document.documentElement.classList.add("dark");
+        } else if (data.theme === "Light") {
+          setDarkMode(false);
+          document.documentElement.classList.remove("dark");
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch settings", err);
+    } finally {
+      setIsFetchingSettings(false);
+    }
+  };
+
+  const updateSettings = async (newSettings: any) => {
+    setIsSavingSettings(true);
+    try {
+      const { user } = await getCurrentUser();
+      const userId = user?.id || "00000000-0000-0000-0000-000000000000";
+      await apiPost("/api/settings/update", { userId, settings: newSettings });
+      setSettingsData((prev: any) => ({ ...prev, ...newSettings }));
+    } catch (err) {
+      console.error("Failed to update settings", err);
+      throw err;
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "settings" && !settingsData && !isFetchingSettings) {
+      fetchSettings();
+    }
+  }, [activeTab]);
+
   return {
     // Navigation/Shell
     activeTab,
@@ -346,7 +423,17 @@ export const useDashboard = () => {
     setLibraryClips,
     deleteLibraryClips,
     handleGenerate,
-    cancelGeneration
+    cancelGeneration,
+    // Analytics
+    analyticsData,
+    isFetchingAnalytics,
+    fetchAnalytics,
+    // Settings DB
+    settingsData,
+    isFetchingSettings,
+    isSavingSettings,
+    updateSettings,
+    fetchSettings
   };
 };
 export type UseDashboardType = ReturnType<typeof useDashboard>;

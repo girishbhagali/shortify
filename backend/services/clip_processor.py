@@ -183,7 +183,8 @@ async def process_and_store_clip(
   clip_id: str,
   start_time: float,
   end_time: float,
-  settings: dict
+  settings: dict,
+  words: list = None
 ) -> dict:
     """Process a clip: cut, resize, optionally add captions, upload to Supabase, update DB."""
     log(f"\n{'='*60}")
@@ -194,7 +195,7 @@ async def process_and_store_clip(
     log(f"{'='*60}")
     
     try:
-        return await _process_clip_internal(video_path, user_id, clip_id, start_time, end_time, settings)
+        return await _process_clip_internal(video_path, user_id, clip_id, start_time, end_time, settings, words)
     except Exception as e:
         # LOG THE FULL ERROR so it's visible in the terminal
         log(f"\n[CLIP PROCESSOR] FAILED for clip_id={clip_id}")
@@ -220,7 +221,8 @@ async def _process_clip_internal(
   clip_id: str,
   start_time: float,
   end_time: float,
-  settings: dict
+  settings: dict,
+  words: list = None
 ) -> dict:
     if not supabase:
         raise ValueError("Supabase is not configured. Please set SUPABASE_URL and SUPABASE_SERVICE_KEY in backend/.env")
@@ -285,43 +287,53 @@ async def _process_clip_internal(
     srt_path = os.path.join(temp_dir, f"{clip_id}.srt")
     captions_generated = False
     if ai_features.get('autoCaptions'):
-      log("[Step 2] Generating captions via Whisper...")
+      log("[Step 2] Generating captions...")
       try:
-          from clip_generator import get_whisper_model
-          model = get_whisper_model()
-          whisper_result = model.transcribe(
-              temp_cut_path,
-              fp16=False,
-              language=None,          # auto-detect language
-              condition_on_previous_text=False,
-              no_speech_threshold=0.3,  # lower = more sensitive (default 0.6)
-              logprob_threshold=-1.5,   # more permissive (default -1.0)
-          )
-
           lang = ai_features.get("translateLanguage", "Hindi") if ai_features.get("autoTranslate", False) else None
           emoji_enabled = ai_features.get("emojiCaptions", True) or ai_features.get("emojiAnimations", True)
-
-          segments = whisper_result.get('segments', [])
-          log(f"   Whisper found {len(segments)} segments, text: {whisper_result.get('text','')[:100]}")
-
-          with open(srt_path, 'w', encoding='utf-8') as f:
-            for i, seg in enumerate(segments):
-              text = seg['text'].strip()
-              if not text:
-                  continue
-              if lang:
-                  text = translate_text(text, lang)
-              if emoji_enabled:
-                  text = add_emojis_to_text(text)
-              f.write(f"{i+1}\n")
-              f.write(f"{format_time(seg['start'])} --> {format_time(seg['end'])}\n")
-              f.write(f"{text}\n\n")
-
-          if segments and os.path.getsize(srt_path) > 0:
-              captions_generated = True
-              log("   [OK] SRT captions generated")
+          
+          if words:
+              from clip_generator import generate_srt
+              generate_srt(words, start_time, srt_path, emoji=emoji_enabled, lang=lang)
+              if os.path.exists(srt_path) and os.path.getsize(srt_path) > 0:
+                  captions_generated = True
+                  log("   [OK] SRT captions generated from provided words")
+              else:
+                  log("   [WARN] No words found in this segment — skipping captions")
           else:
-              log("   [WARN] Whisper found no speech segments — skipping captions")
+              log("   No words provided, running Whisper on cut...")
+              from clip_generator import get_whisper_model
+              model = get_whisper_model()
+              whisper_result = model.transcribe(
+                  temp_cut_path,
+                  fp16=False,
+                  language=None,          # auto-detect language
+                  condition_on_previous_text=False,
+                  no_speech_threshold=0.3,  # lower = more sensitive (default 0.6)
+                  logprob_threshold=-1.5,   # more permissive (default -1.0)
+              )
+
+              segments = whisper_result.get('segments', [])
+              log(f"   Whisper found {len(segments)} segments, text: {whisper_result.get('text','')[:100]}")
+
+              with open(srt_path, 'w', encoding='utf-8') as f:
+                for i, seg in enumerate(segments):
+                  text = seg['text'].strip()
+                  if not text:
+                      continue
+                  if lang:
+                      text = translate_text(text, lang)
+                  if emoji_enabled:
+                      text = add_emojis_to_text(text)
+                  f.write(f"{i+1}\n")
+                  f.write(f"{format_time(seg['start'])} --> {format_time(seg['end'])}\n")
+                  f.write(f"{text}\n\n")
+
+              if segments and os.path.getsize(srt_path) > 0:
+                  captions_generated = True
+                  log("   [OK] SRT captions generated")
+              else:
+                  log("   [WARN] Whisper found no speech segments — skipping captions")
       except Exception as cap_err:
           log(f"   [WARN] Caption generation failed: {cap_err}, continuing without captions")
 
@@ -386,15 +398,6 @@ async def _process_clip_internal(
 
     # 3. Subtitles
     if captions_generated and os.path.exists(srt_path) and os.path.getsize(srt_path) > 0:
-        # On Windows, FFmpeg's libass subtitles filter cannot handle paths with spaces.
-        # Copy the SRT to a guaranteed no-space temp path before passing to FFmpeg.
-        import tempfile, shutil as _shutil
-        safe_srt = os.path.join(tempfile.gettempdir(), f"{clip_id}.srt")
-        _shutil.copy2(srt_path, safe_srt)
-        # FFmpeg on Windows needs forward slashes with the colon escaped: C\:/path/to/file
-        fwd = safe_srt.replace(os.sep, '/')
-        ffmpeg_srt = fwd[0] + '\\:' + fwd[2:]
-
         captions_style = ai_features.get('captionsStyle', 'viral-yellow')
         if captions_style == 'viral-yellow':
             force_style = "FontName=Arial Bold,FontSize=18,PrimaryColour=&H00FFFF&,OutlineColour=&H000000,Outline=2,Alignment=2,MarginV=100"
@@ -403,7 +406,10 @@ async def _process_clip_internal(
         else:
             force_style = "FontName=Arial Bold,FontSize=16,PrimaryColour=&HFFFFFF,OutlineColour=&H000000,Outline=2,Alignment=2,MarginV=100"
 
-        vf_chain.append(f"subtitles='{ffmpeg_srt}':force_style='{force_style}'")
+        # Since cwd=temp_dir, we can just use the relative filename!
+        # This completely avoids Windows absolute path colon escaping bugs in libass.
+        safe_srt = f"{clip_id}.srt"
+        vf_chain.append(f"subtitles='{safe_srt}':force_style='{force_style}'")
 
     # 4. Viral Hook
     if ai_features.get("viralHooks", True) or ai_features.get("viralHook", True):
@@ -416,10 +422,13 @@ async def _process_clip_internal(
 
         drawtext_opts = []
         font_path = "C:\\Windows\\Fonts\\arial.ttf"
+        local_font = os.path.join(temp_dir, "arial.ttf")
         if os.path.exists(font_path):
-            # FFmpeg drawtext needs the Windows path escaped as 'C\\:/...' with forward slashes
-            ffmpeg_font = "C\\\\:/Windows/Fonts/arial.ttf"
-            drawtext_opts.append(f"fontfile='{ffmpeg_font}'")
+            if not os.path.exists(local_font):
+                import shutil
+                shutil.copy2(font_path, local_font)
+            # Use relative path to avoid colon escaping bugs
+            drawtext_opts.append("fontfile='arial.ttf'")
         drawtext_opts.append(f"text='{hook_text}'")
         drawtext_opts.append("fontcolor=white")
         drawtext_opts.append("fontsize=48")
@@ -436,9 +445,12 @@ async def _process_clip_internal(
     if export_settings.get("watermark", False):
         watermark_opts = []
         font_path_wm = "C:\\Windows\\Fonts\\arial.ttf"
+        local_font_wm = os.path.join(temp_dir, "arial.ttf")
         if os.path.exists(font_path_wm):
-            ffmpeg_font_wm = "C\\\\:/Windows/Fonts/arial.ttf"
-            watermark_opts.append(f"fontfile='{ffmpeg_font_wm}'")
+            if not os.path.exists(local_font_wm):
+                import shutil
+                shutil.copy2(font_path_wm, local_font_wm)
+            watermark_opts.append("fontfile='arial.ttf'")
         watermark_opts.append("text='ShortifyAI'")
         watermark_opts.append("fontcolor=white@0.4")
         watermark_opts.append("fontsize=20")
@@ -585,11 +597,9 @@ async def _process_clip_internal(
 
     # STEP 9 -- CLEANUP TEMP INTERMEDIARIES ONLY:
     # Never delete clip_storage_path, thumb_storage_path, or caption_storage_path — they're what the endpoints serve.
-    import tempfile
     faststart_path = os.path.join(temp_dir, f"{clip_id}_faststart.mp4")
-    safe_srt_temp = os.path.join(tempfile.gettempdir(), f"{clip_id}.srt")
     protected_paths = [clip_storage_path, thumb_storage_path, caption_storage_path]
-    for path in [temp_cut_path, faststart_path, srt_path, safe_srt_temp]:
+    for path in [temp_cut_path, faststart_path, srt_path]:
         if path and os.path.exists(path) and os.path.abspath(path) not in protected_paths:
             try: os.remove(path)
             except: pass
