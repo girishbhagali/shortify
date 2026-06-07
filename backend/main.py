@@ -212,6 +212,11 @@ def _get_yt_dlp_cookie_opts() -> dict:
     session that owns the browser — which doesn't work reliably from a
     background server process.
     """
+    # On Windows (local testing), the most reliable way is to pull cookies directly from Chrome/Edge
+    if os.name == 'nt':
+        print("[YT-DLP] Running on Windows — attempting to pull cookies directly from Chrome")
+        return {'cookiesfrombrowser': ('chrome',)}
+
     possible_paths = [
         os.path.join(os.path.dirname(__file__), "cookies.txt"),                  # backend/cookies.txt
         os.path.join(os.path.dirname(os.path.dirname(__file__)), "cookies.txt"), # root cookies.txt (Render default)
