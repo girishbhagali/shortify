@@ -212,10 +212,17 @@ def _get_yt_dlp_cookie_opts() -> dict:
     session that owns the browser — which doesn't work reliably from a
     background server process.
     """
-    cookies_file = os.path.join(os.path.dirname(__file__), "cookies.txt")
-    if os.path.isfile(cookies_file):
-        print(f"[YT-DLP] Using cookies.txt: {cookies_file}")
-        return {'cookiefile': cookies_file}
+    possible_paths = [
+        os.path.join(os.path.dirname(__file__), "cookies.txt"),                  # backend/cookies.txt
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "cookies.txt"), # root cookies.txt (Render default)
+        "/etc/secrets/cookies.txt"                                               # Common secret mount
+    ]
+    
+    for cookies_file in possible_paths:
+        if os.path.isfile(cookies_file):
+            print(f"[YT-DLP] Using cookies.txt: {cookies_file}")
+            return {'cookiefile': cookies_file}
+            
     print("[YT-DLP] No cookies.txt found — proceeding without cookies (YouTube may require auth)")
     return {}
 
